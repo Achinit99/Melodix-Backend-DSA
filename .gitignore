@@ -15,3 +15,5 @@ yarn-error.log*
 # IDE settings
 .vscode/
 .idea/
+
+PROJECT_STRUCTURE.md

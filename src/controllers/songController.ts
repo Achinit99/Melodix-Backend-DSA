@@ -1,5 +1,5 @@
 import pool from '../../db'
-import { PlaylistDoublyLinkedList, SongData, SongNode } from '../logic/SongPlaylistDLL'
+import { PlaylistDoublyLinkedList, SongData, SongNode } from '../logic/SongPlaylistDLL.js'
 
 const playlistDll = new PlaylistDoublyLinkedList()
 const DEFAULT_PLAYLIST_ID = 1

@@ -1,4 +1,4 @@
-import { SongRecord } from './SongLinkedList'
+import { SongRecord } from './SongLinkedList.js'
 
 // One BST node stores one song and links to left/right children.
 export class SongBSTNode {
