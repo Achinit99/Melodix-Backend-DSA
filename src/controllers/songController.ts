@@ -1,5 +1,5 @@
 import pool from '../../db'
-import { PlaylistDoublyLinkedList, SongData, SongNode } from '../logic/SongPlaylistDLL.js'
+import { PlaylistDoublyLinkedList, SongData, SongNode } from '../logic/SongPlaylistDLL'
 
 const playlistDll = new PlaylistDoublyLinkedList()
 const DEFAULT_PLAYLIST_ID = 1
@@ -52,6 +52,10 @@ async function loadPlaylistFromDatabase(playlistId: number = DEFAULT_PLAYLIST_ID
 
   currentPlayingId = playlistDll.currentPlaying?.data.id ?? null
   return songs
+}
+
+export async function initializeDefaultPlaylistDll(): Promise<void> {
+  await loadPlaylistFromDatabase(DEFAULT_PLAYLIST_ID)
 }
 
 export async function addSong(req: import('express').Request, res: import('express').Response): Promise<void> {

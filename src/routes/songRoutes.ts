@@ -6,7 +6,7 @@ import {
   getPlaylist,
   getPrevious,
   searchSong,
-} from '../controllers/songController.js'
+} from '../controllers/songController'
 
 const router = express.Router()
 
