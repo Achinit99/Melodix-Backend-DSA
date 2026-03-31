@@ -2,7 +2,8 @@ import express from 'express'
 import type { Express } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { testConnection } from '../db'
+import pool, { testConnection } from '../db'
+import { initializeDefaultPlaylistDll } from './controllers/songController'
 import userRoutes from './routes/userRoutes'
 import songRoutes from './routes/songRoutes'
 import playlistRoutes from './routes/playlistRoutes'
@@ -35,6 +36,121 @@ const {
 // This enables fast searching by title (O(log n) average case).
 const allSongsArray = Object.values(mockPlaylistSongsFromFrontend).flat()
 const songSearchBST = buildSongBSTFromArray(allSongsArray)
+
+type StartupSongSeed = {
+	id: number
+	title: string
+	artist_name: string
+	audio_url: string
+}
+
+const startupPlaylistSongs: StartupSongSeed[] = [
+	{ id: 1, title: 'CHANEL', artist_name: 'Frank Ocean', audio_url: '/assets/songs/CHANEL.mp3' },
+	{ id: 2, title: 'I Like It', artist_name: 'Cardi B', audio_url: '/assets/songs/I Like It.mp3' },
+	{ id: 3, title: 'Lose Yourself', artist_name: 'Eminem', audio_url: '/assets/songs/Lose Yourself.mp3' },
+	{ id: 4, title: 'Not Like Us', artist_name: 'Kendrick Lamar', audio_url: '/assets/songs/Not Like Us.mp3' },
+	{ id: 5, title: 'Water', artist_name: 'Tyla', audio_url: '/assets/songs/Water.mp3' },
+]
+
+async function ensurePlaylistTables(): Promise<void> {
+	await pool.query(`
+		CREATE TABLE IF NOT EXISTS playlists (
+			id INT PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)
+	`)
+
+	await pool.query(`
+		CREATE TABLE IF NOT EXISTS songs (
+			id INT PRIMARY KEY,
+			title VARCHAR(255) NOT NULL,
+			artist_name VARCHAR(255) NOT NULL,
+			duration VARCHAR(20) DEFAULT '0:00',
+			image_url VARCHAR(1024) NULL,
+			audio_url VARCHAR(1024) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)
+	`)
+
+	await pool.query(`
+		CREATE TABLE IF NOT EXISTS playlist_songs (
+			playlist_id INT NOT NULL,
+			song_id INT NOT NULL,
+			song_order INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (playlist_id, song_id),
+			INDEX idx_playlist_song_order (playlist_id, song_order),
+			CONSTRAINT fk_playlist_songs_playlist FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+			CONSTRAINT fk_playlist_songs_song FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+		)
+	`)
+}
+
+async function seedStartupPlaylist(): Promise<void> {
+	const [playlistColumnsRows] = await pool.query(
+		`SELECT column_name
+		 FROM information_schema.columns
+		 WHERE table_schema = DATABASE()
+		   AND table_name = 'playlists'`,
+	)
+
+	const playlistColumns = new Set(
+		(playlistColumnsRows as { column_name: string }[]).map((row) => row.column_name),
+	)
+
+	const playlistLabelColumn = playlistColumns.has('name')
+		? 'name'
+		: playlistColumns.has('title')
+			? 'title'
+			: playlistColumns.has('playlist_name')
+				? 'playlist_name'
+				: null
+
+	if (playlistLabelColumn !== null) {
+		await pool.query(
+			`INSERT INTO playlists (id, ${playlistLabelColumn})
+			 VALUES (1, 'Main Playlist')
+			 ON DUPLICATE KEY UPDATE ${playlistLabelColumn} = VALUES(${playlistLabelColumn})`,
+		)
+	} else {
+		await pool.query('INSERT IGNORE INTO playlists (id) VALUES (1)')
+	}
+
+	for (const song of startupPlaylistSongs) {
+		await pool.query(
+			`INSERT INTO songs (id, title, artist_name, duration, image_url, audio_url)
+			 VALUES (?, ?, ?, ?, ?, ?)
+			 ON DUPLICATE KEY UPDATE
+			 title = VALUES(title),
+			 artist_name = VALUES(artist_name),
+			 audio_url = VALUES(audio_url)`,
+			[song.id, song.title, song.artist_name, '0:00', null, song.audio_url],
+		)
+	}
+
+	for (const [index, song] of startupPlaylistSongs.entries()) {
+		await pool.query(
+			`INSERT INTO playlist_songs (playlist_id, song_id, song_order)
+			 VALUES (?, ?, ?)
+			 ON DUPLICATE KEY UPDATE song_order = VALUES(song_order)`,
+			[1, song.id, index + 1],
+		)
+	}
+}
+
+async function verifySeededPlaylistCount(): Promise<number> {
+	const [rows] = await pool.query(
+		`SELECT COUNT(*) AS total
+		 FROM playlist_songs
+		 WHERE playlist_id = ?`,
+		[1],
+	)
+
+	return Number((rows as { total: number }[])[0]?.total ?? 0)
+}
 
 // Central data management notes:
 // Keeping shared UI data in backend APIs improves scalability because multiple clients
@@ -143,6 +259,17 @@ app.use('/api/artists', artistRoutes)
 app.listen(PORT, async () => {
 	console.log(`Music playlist backend running on http://localhost:${PORT}`)
 
-	// Test the database connection on server startup.
-	await testConnection()
+	try {
+		// Test DB connectivity, then ensure tables and seed startup songs.
+		await testConnection()
+		await ensurePlaylistTables()
+		await seedStartupPlaylist()
+		await initializeDefaultPlaylistDll()
+
+		const seededCount = await verifySeededPlaylistCount()
+		console.log(`Seeded startup playlist songs: ${seededCount}`)
+	} catch (error) {
+		console.error('Startup initialization failed:', error)
+		process.exit(1)
+	}
 })
