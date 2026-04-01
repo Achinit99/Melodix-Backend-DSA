@@ -9,10 +9,6 @@ This project was developed to demonstrate the practical application of **Data St
 
 ---
 
-# ⚙️ PlayWave - Music Playlist Backend (API)
-
-This is the core engine of the PlayWave application. It manages data using advanced **Data Structures** and a **MySQL** database to ensure high performance and scalability.
-
 ## 🏗️ Architecture: MVC (Model-View-Controller)
 The project follows a structured MVC pattern for better maintainability:
 * **Model:** Database schema managed via `db.ts` and MySQL.
